@@ -77,7 +77,7 @@ int main(int argc, char* agrv[]){
     if (recsize == - 1){
       printf("Receiving error\n");
     }
-    printf("recsize: %d\n", recsize);
+    // printf("recsize: %d\n", recsize);
     packet = buffer_to_packet(buffer);
     if(packet == NULL){
       printf("Packet is corrupted\n");
@@ -120,20 +120,25 @@ int main(int argc, char* agrv[]){
         exit_unsuccessful(1);
         break;
       case 4: // FIN
-        if (packet->sequence_num == acknowledged_up_to){
+        if (packet->sequence_num == acknowledged_up_to){// If FIN is the next packet
           fcntl(sock, F_SETFL, O_NONBLOCK); // set to non-blocking
           struct timeval timeout;
           gettimeofday(&timeout, NULL);
           struct timeval now;
           int firstFin = 0;
           statistics.FIN_SENT++;
+          acknowledged_up_to += packet->data_payload_length;
           for(;;){
             int recsize = recvfrom(sock, buffer, MAX_PACKET_SIZE, 0, (struct sockaddr*) &sender_address, &sender_address_size);
             if(recsize <= 0){ // Havent got anything
               gettimeofday(&now, NULL);
-              long int elapsedTime = (now.tv_sec - timeout.tv_sec) / 1000;
-              elapsedTime += (now.tv_usec - timeout.tv_usec) * 1000;
-              if (elapsedTime > CONNECTION_TIMEOUT) {//havent got anything, timed out
+              struct timeval elapsedTime;
+              int negative = timeval_subtract(&elapsedTime, &now, &timeout);
+              if (negative){
+                printf("Shouldn't be\n");
+              }
+              int toTime = elapsedTime.tv_sec * 1000 + elapsedTime.tv_usec / 1000;
+              if (toTime > CONNECTION_TIMEOUT) {//havent got anything, timed out
                 fclose(file);
                 close(sock);
                 free(packet);
@@ -152,12 +157,20 @@ int main(int argc, char* agrv[]){
               statistics.FIN_SENT++;
               send_ACK_packet(sock, &receiver_address, &sender_address, 
                             sender_address_size, acknowledged_up_to, 0);
-              gettimeofday(&timeout, NULL); // reset timer
+              if(packet->type == 4){
+                gettimeofday(&timeout, NULL); // reset timer
+              }
             }
           }
         }else{
-              statistics.FIN_SENT++;
+          printf("Got FIN but still need data %d  %d\n", packet->sequence_num, acknowledged_up_to );
+          statistics.FIN_SENT++;
+          send_ACK_packet(sock, &receiver_address,
+                 &sender_address, sender_address_size, 
+                 acknowledged_up_to, 0);
         }
+        fflush(stdout);
+
         break;
     }
     free(packet);

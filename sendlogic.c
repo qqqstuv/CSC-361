@@ -22,10 +22,10 @@ void logServer(int event_type, int packet_type, int number, int length){
 	timeinfo = localtime ( &rawtime );
 	char timeBuffer[80];
 	strftime(timeBuffer,80,"%H:%M:%S",timeinfo);
-	// printf("%s ", timeBuffer);
+	printf("%s ", timeBuffer);
 	struct timeval tv;
 	gettimeofday(&tv, NULL);
-	// printf("%ld ",tv.tv_usec);
+	printf("%ld ",tv.tv_usec);
 
 	char* event_type_char = NULL;
 	switch(event_type){
@@ -170,18 +170,20 @@ Node* send_full_queue(	int sock, struct sockaddr_in* sender_address,
 		//read in MAX_DATA_PAYLOAD_LENGTH bytes of data
 		sequence_number_increment = (int) fread(packet->data, sizeof(char), MAX_DATA_PAYLOAD_LENGTH, file); // get total number of bytes read
 		if (sequence_number_increment == 0){ // no more data to send. Send FIN instead
+			
 			packet->type 				= 4;
 			packet->sequence_num 		= *sequence_number; // current sequence_number
 			packet->acknowledgement_num = 0;
-			packet->data_payload_length = 0;
+			packet->data_payload_length = 1;
 			packet->window_size			= 0;
 			strcpy(packet->magic, "CSC361");
 			*connection_state = EXIT;
-			// printf("CONNECTION STATE: EXIT\n");
+			printf("CONNECTION STATE: EXIT\n");
 			char* buffer = packet_to_buffer(packet);
 			sendto(sock,buffer, MAX_PACKET_SIZE, 0, (struct sockaddr*) receiver_address, receiver_address_size);
 			free(buffer);
 			logServer(1, 4, *sequence_number, 0);
+			*sequence_number += 1;
 			queue = insert(queue, packet);
 			statistics.FIN_SENT++;
 			statistics.total_data_packets_sent++;
@@ -279,7 +281,7 @@ Node* resend_packet(int sock, struct sockaddr_in* receiver_address, socklen_t re
 	sendto(sock, buffer, MAX_PACKET_SIZE, 0, (struct sockaddr*) receiver_address, receiver_address_size);
 	free(buffer);
 	queue = insert(queue, packet);
-	logServer(2,1,packet->sequence_num, packet->data_payload_length);
+	logServer(2,packet->type,packet->sequence_num, packet->data_payload_length);
 	statistics.total_data_bytes_sent += packet->data_payload_length;
 	statistics.total_data_packets_sent += 1;
 	// printf("Queue size after resend is %d\n", getSize(queue));
@@ -325,13 +327,14 @@ packet_t* find_expire_packet(Node** queue){
 	if (negative){
 		printf("Shouldn't be\n");
 	}
-	int toTime = elapsedTime.tv_sec / 1000 + elapsedTime.tv_usec * 1000;
+	int toTime = elapsedTime.tv_sec * 1000 + elapsedTime.tv_usec / 1000;
 	if (toTime > CONNECTION_TIMEOUT) {// take element out of queue, return element
 		*queue = head->next;
 		packet_t* packet = &(head -> packet);
+		// printf(">%ld.%06ld< >%d<", elapsedTime.tv_sec, elapsedTime.tv_usec, toTime);
 		return packet;
 	}else{
-		printf("elapsedTime: %d\n", toTime);
+		// printf(">%ld.%06ld< >%d<\n", elapsedTime.tv_sec, elapsedTime.tv_usec, toTime);
 		return NULL;
 	}
 }
@@ -358,7 +361,7 @@ Node* remove_acknowledged_packet(packet_t* acknowledged_packet, Node** queue){
   			logServer(4, 2, acknowledged_packet->acknowledgement_num, acknowledged_packet->data_payload_length);
   		}else if(	target->packet.sequence_num + 
   					target->packet.data_payload_length
-  				== acknowledged_packet->acknowledgement_num){ 
+  		  		== 	acknowledged_packet->acknowledgement_num){ 
   				//If the packet is the one to be removed from linkedlist
   			if (prev == NULL){
   				Node* freeNode = target;

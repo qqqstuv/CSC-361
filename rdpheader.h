@@ -17,7 +17,7 @@
 #define MAGIC_SIZE 7
 #define TYPE_SIZE 3
 #define MAX_WINDOW_SIZE_UNIT 10
-#define CONNECTION_TIMEOUT 30
+#define CONNECTION_TIMEOUT 70	
 
 extern char* global_receiver_ip;
 extern int global_receiver_port;
@@ -121,3 +121,5 @@ void stats(int side);
 void exit_unsuccessful(int side);
 
 void exit_successful(int side);
+
+int timeval_subtract (struct timeval *result, struct timeval *x, struct timeval *y);

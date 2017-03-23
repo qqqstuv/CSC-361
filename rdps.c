@@ -53,7 +53,6 @@ int main(int argc, char *argv[]){
     sender_address.sin_family = AF_INET;
     sender_address.sin_addr.s_addr = inet_addr(sender_ip); // MAYBE: makes integer from pointer without a cast
     sender_address.sin_port = sender_port;
-    
     // socket for receiver
     struct sockaddr_in receiver_address;
     socklen_t receiver_address_size = sizeof(receiver_address);
@@ -61,21 +60,18 @@ int main(int argc, char *argv[]){
     receiver_address.sin_family = AF_INET;
     receiver_address.sin_addr.s_addr = inet_addr(receiver_ip);
     receiver_address.sin_port = receiver_port;
-
     int opt = 1;
     if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (char*) &opt, sizeof(opt)) == -1){
       fprintf(stderr,"Set Socket Option Failed\n"); 
       close(sock);
       exit(EXIT_FAILURE);
     }
-
     // bind to socket
     if (-1 == bind(sock, (struct sockaddr *)&sender_address, sizeof sender_address)) {
       perror("Error bind failed");
       close(sock);
       exit(EXIT_FAILURE);
     }
-
     // Sender side
     enum connection_states connection_state = HANDSHAKE;
     fcntl(sock, F_SETFL, O_NONBLOCK); // set to non-blocking
@@ -90,14 +86,18 @@ int main(int argc, char *argv[]){
     // Sender logic
     Node* queue = NULL;
     gettimeofday(&duration, NULL);
+
     while (connection_state == HANDSHAKE) {
       // Get something from the socket
+      // printf("Waiting\n");
+      fflush(stdout); 
       int recsize = recvfrom(sock, (void*)buffer, MAX_PACKET_SIZE, 0, (struct sockaddr*)&receiver_address, &receiver_address_size); //Maybe: fix this warning
       if (recsize <= 0) { // Cannot receive SYN packet
         statistics.SYN_SENT++; // increment SYN num
         system_seqnum = send_SYN_packet(sock, &receiver_address, receiver_address_size, &sender_address); // Send SYN packet and set init random seq num
         sleep(1);
       } else{ // TRANSFER STATE
+        fflush(stdout);
         connection_state = TRANSFER;
         packet = buffer_to_packet(buffer);
 
@@ -110,6 +110,7 @@ int main(int argc, char *argv[]){
                             file, &system_seqnum, 
                             queue, &connection_state);
           temp_acked_up_to = system_seqnum;
+          fflush(stdout);
         }else{
           fflush(stdout);
         }
@@ -119,6 +120,7 @@ int main(int argc, char *argv[]){
     packet = NULL;
     // Done with handshaking. Start handling sending data
     while(1) {
+      fflush(stdout);
       while(packet == NULL){ // main loop
         memset(buffer, '\0', MAX_PACKET_SIZE + 1); // reset buffer
         int recsize = recvfrom(sock, (void*)buffer, MAX_PACKET_SIZE, 0, (struct sockaddr*)&receiver_address, &receiver_address_size); //Maybe: fix this warning
@@ -128,7 +130,7 @@ int main(int argc, char *argv[]){
             // printf("Found expired packet\n");
           }
         } else{ // got something from the receiver
-          printf("Got something from buffer\n");
+          // printf("Got something from buffer\n");
           packet = buffer_to_packet(buffer);
           if(packet->type == 1){ // Getting data from the buffer
             fclose(file);
@@ -137,10 +139,10 @@ int main(int argc, char *argv[]){
         }
       }
       if (packet->type == 2){ // ACK. should be from the receiver only 
-        if (temp_acked_up_to < packet->acknowledgement_num){
-          temp_acked_up_to = packet->acknowledgement_num; 
-        }
         statistics.ACK_RECEIVED++;
+        if (temp_acked_up_to < packet->acknowledgement_num){
+          temp_acked_up_to = packet->acknowledgement_num;
+        }
         switch(connection_state){
           case TRANSFER:
             // drop the packet from timers
@@ -154,34 +156,39 @@ int main(int argc, char *argv[]){
           case RESET:
             break;
           case EXIT: //Final state. Can only reach here if there is no data to send 
-            queue = remove_acknowledged_packet(packet, &queue); 
+            queue = remove_acknowledged_packet(packet, &queue);
             if (getSize(queue) == 0){ // All data has been received
               fclose(file);
+              printf("EXIT HERE\n");
               exit_successful(0);
             }
             break;
           default:
             printf("Why reached here?\n");
-            break;
+            break;        
         }
       } else if (packet->type == 1){ //DAT Coming from the timeout queue thingy
-        if (packet->sequence_num + packet->data_payload_length > temp_acked_up_to){
+        // if (packet->sequence_num + packet->data_payload_length >= temp_acked_up_to){
           queue = resend_packet(sock, &receiver_address, receiver_address_size, 
                           packet, queue);          
-        }
+        // }
       } else if (packet->type == 5){ // RST
         connection_state = RESET;
         fclose(file);
         printf("Getting reset from sender\n");
         exit_unsuccessful(0);
       } else if (packet->type == 4){ // FIN Coming from timeout queue in EXIT STATE
-        if (getSize(queue) == 0){
-          fclose(file);
-          exit_successful(0);
-        }else{
-          send_FIN_packet(sock, &sender_address, &receiver_address, 
-                  receiver_address_size, system_seqnum, 0);         
-        }
+        // if (getSize(queue) == 0){
+          // fclose(file);
+          // printf("EXIT THERE\n");
+          // exit_successful(0);
+          // send_FIN_packet(sock, &sender_address, &receiver_address, 
+          //         receiver_address_size, system_seqnum, 0);
+          queue = resend_packet(sock, &receiver_address, receiver_address_size, 
+                packet, queue);
+        // }
+        // send_FIN_packet(sock, &sender_address, &receiver_address, 
+        //         receiver_address_size, system_seqnum, 0);
       } else { // Invalid packet type
       }
       packet = NULL; //reset packetset

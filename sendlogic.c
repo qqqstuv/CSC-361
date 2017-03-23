@@ -25,7 +25,7 @@ void logServer(int event_type, int packet_type, int number, int length){
 	printf("%s ", timeBuffer);
 	struct timeval tv;
 	gettimeofday(&tv, NULL);
-	printf("%ld ",tv.tv_usec);
+	printf("%06ld ",tv.tv_usec);
 
 	char* event_type_char = NULL;
 	switch(event_type){
@@ -159,7 +159,7 @@ Node* send_full_queue(	int sock, struct sockaddr_in* sender_address,
 							FILE* file, int* sequence_number, 
 							Node* queue, 
 							enum connection_states* connection_state){
-	int num_of_sendable_packets = 8 - getSize(queue);
+	int num_of_sendable_packets = 10 - getSize(queue);
 	// printf("Sendable packet numbers: %d\n",  num_of_sendable_packets);
 	int packets_sent = 0;
 	while(packets_sent < num_of_sendable_packets){
@@ -358,7 +358,7 @@ Node* remove_acknowledged_packet(packet_t* acknowledged_packet, Node** queue){
 	  			free(target);
 	  			target = prev -> next;
   			}
-  			logServer(4, 2, acknowledged_packet->acknowledgement_num, acknowledged_packet->data_payload_length);
+  			// logServer(4, 2, acknowledged_packet->acknowledgement_num, acknowledged_packet->data_payload_length);
   		}else if(	target->packet.sequence_num + 
   					target->packet.data_payload_length
   		  		== 	acknowledged_packet->acknowledgement_num){ 
@@ -373,7 +373,7 @@ Node* remove_acknowledged_packet(packet_t* acknowledged_packet, Node** queue){
 	  			free(target);
 	  			target = prev -> next;
   			}
-  			logServer(3, 2, acknowledged_packet->acknowledgement_num, acknowledged_packet->data_payload_length);
+  			// logServer(3, 2, acknowledged_packet->acknowledgement_num, acknowledged_packet->data_payload_length);
   		}else{
   			prev = target;
   			target = target->next;
@@ -403,7 +403,7 @@ Node* remove_acknowledged_packet4(packet_t* acknowledged_packet, Node** queue){
     	Node* freeNode = head;
     	head = head->next;
     	free(freeNode);
-	  	logServer(3, 2, acknowledged_packet->acknowledgement_num, acknowledged_packet->data_payload_length);    	
+	  	// logServer(3, 2, acknowledged_packet->acknowledgement_num, acknowledged_packet->data_payload_length);    	
     	return head;
   	}
   	head = head->next; // get the second element

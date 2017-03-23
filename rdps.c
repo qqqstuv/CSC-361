@@ -79,7 +79,7 @@ int main(int argc, char *argv[]){
     int init_seqnum = 0;
     int system_seqnum = init_seqnum;
 
-    int temp_acked_up_to;
+    int acked_up_to;
     // Set up buffer
     char *buffer = calloc(MAX_PACKET_SIZE + 1, sizeof(char));
     packet_t* packet = NULL;
@@ -109,7 +109,7 @@ int main(int argc, char *argv[]){
                             &receiver_address, receiver_address_size, 
                             file, &system_seqnum, 
                             queue, &connection_state);
-          temp_acked_up_to = system_seqnum;
+          acked_up_to = system_seqnum;
           fflush(stdout);
         }else{
           fflush(stdout);
@@ -130,7 +130,6 @@ int main(int argc, char *argv[]){
             // printf("Found expired packet\n");
           }
         } else{ // got something from the receiver
-          // printf("Got something from buffer\n");
           packet = buffer_to_packet(buffer);
           if(packet->type == 1){ // Getting data from the buffer
             fclose(file);
@@ -140,8 +139,11 @@ int main(int argc, char *argv[]){
       }
       if (packet->type == 2){ // ACK. should be from the receiver only 
         statistics.ACK_RECEIVED++;
-        if (temp_acked_up_to < packet->acknowledgement_num){
-          temp_acked_up_to = packet->acknowledgement_num;
+        if (acked_up_to < packet->acknowledgement_num){
+          acked_up_to = packet->acknowledgement_num;
+          logServer(3, 2, packet->acknowledgement_num, packet->data_payload_length);
+        }else{
+          logServer(4, 2, packet->acknowledgement_num, packet->data_payload_length);
         }
         switch(connection_state){
           case TRANSFER:
@@ -168,7 +170,7 @@ int main(int argc, char *argv[]){
             break;        
         }
       } else if (packet->type == 1){ //DAT Coming from the timeout queue thingy
-        // if (packet->sequence_num + packet->data_payload_length >= temp_acked_up_to){
+        // if (packet->sequence_num + packet->data_payload_length >= acked_up_to){
           queue = resend_packet(sock, &receiver_address, receiver_address_size, 
                           packet, queue);          
         // }

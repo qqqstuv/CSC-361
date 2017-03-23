@@ -83,13 +83,12 @@ int main(int argc, char *argv[]){
     int init_seqnum = 0;
     int system_seqnum = init_seqnum;
 
-
+    int temp_acked_up_to;
     // Set up buffer
     char *buffer = calloc(MAX_PACKET_SIZE + 1, sizeof(char));
     packet_t* packet = NULL;
     // Sender logic
     Node* queue = NULL;
-    // Node* queue = calloc(1, sizeof(struct Node));
     gettimeofday(&duration, NULL);
     while (connection_state == HANDSHAKE) {
       // Get something from the socket
@@ -110,6 +109,7 @@ int main(int argc, char *argv[]){
                             &receiver_address, receiver_address_size, 
                             file, &system_seqnum, 
                             queue, &connection_state);
+          temp_acked_up_to = system_seqnum;
         }else{
           fflush(stdout);
         }
@@ -124,16 +124,22 @@ int main(int argc, char *argv[]){
         int recsize = recvfrom(sock, (void*)buffer, MAX_PACKET_SIZE, 0, (struct sockaddr*)&receiver_address, &receiver_address_size); //Maybe: fix this warning
         if (recsize == - 1) { // nothing has arrived yet
           packet = find_expire_packet(&queue); // loop through the linked list timeout_queue and get a packet that timed out
+          if (packet != NULL){
+            // printf("Found expired packet\n");
+          }
         } else{ // got something from the receiver
+          printf("Got something from buffer\n");
           packet = buffer_to_packet(buffer);
           if(packet->type == 1){ // Getting data from the buffer
             fclose(file);
             exit_unsuccessful(0);
           }
-          printf("recsize: %d\n", recsize);
         }
       }
       if (packet->type == 2){ // ACK. should be from the receiver only 
+        if (temp_acked_up_to < packet->acknowledgement_num){
+          temp_acked_up_to = packet->acknowledgement_num; 
+        }
         statistics.ACK_RECEIVED++;
         switch(connection_state){
           case TRANSFER:
@@ -159,8 +165,10 @@ int main(int argc, char *argv[]){
             break;
         }
       } else if (packet->type == 1){ //DAT Coming from the timeout queue thingy
-        queue = resend_packet(sock, &receiver_address, receiver_address_size, 
-                        packet, queue);
+        if (packet->sequence_num + packet->data_payload_length > temp_acked_up_to){
+          queue = resend_packet(sock, &receiver_address, receiver_address_size, 
+                          packet, queue);          
+        }
       } else if (packet->type == 5){ // RST
         connection_state = RESET;
         fclose(file);

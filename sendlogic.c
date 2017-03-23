@@ -205,7 +205,7 @@ Node* send_full_queue(	int sock, struct sockaddr_in* sender_address,
 			statistics.unique_data_packets_sent++;
 			statistics.total_data_bytes_sent += sequence_number_increment;
 			statistics.unique_data_bytes_sent += sequence_number_increment;
-			printf("Queue size after sending new data is %d\n", getSize(queue));
+			// printf("Queue size after sending new data is %d\n", getSize(queue));
 		}
 	}
 	return queue;
@@ -282,8 +282,31 @@ Node* resend_packet(int sock, struct sockaddr_in* receiver_address, socklen_t re
 	logServer(2,1,packet->sequence_num, packet->data_payload_length);
 	statistics.total_data_bytes_sent += packet->data_payload_length;
 	statistics.total_data_packets_sent += 1;
-	printf("Queue size after resend is %d\n", getSize(queue));
+	// printf("Queue size after resend is %d\n", getSize(queue));
 	return queue;
+}
+
+// http://www.gnu.org/software/libc/manual/html_node/Elapsed-Time.html
+int timeval_subtract (struct timeval *result, struct timeval *x, struct timeval *y){
+  /* Perform the carry for the later subtraction by updating y. */
+  if (x->tv_usec < y->tv_usec) {
+    int nsec = (y->tv_usec - x->tv_usec) / 1000000 + 1;
+    y->tv_usec -= 1000000 * nsec;
+    y->tv_sec += nsec;
+  }
+  if (x->tv_usec - y->tv_usec > 1000000) {
+    int nsec = (x->tv_usec - y->tv_usec) / 1000000;
+    y->tv_usec += 1000000 * nsec;
+    y->tv_sec -= nsec;
+  }
+
+  /* Compute the time remaining to wait.
+     tv_usec is certainly positive. */
+  result->tv_sec = x->tv_sec - y->tv_sec;
+  result->tv_usec = x->tv_usec - y->tv_usec;
+
+  /* Return 1 if result is negative. */
+  return x->tv_sec < y->tv_sec;
 }
 
 // Find expired packet (the first) then remove it and return the data
@@ -295,24 +318,33 @@ packet_t* find_expire_packet(Node** queue){
 	}
 	struct timeval now;
 	gettimeofday(&now, NULL);
-	long int elapsedTime = (now.tv_sec - head->timeout.tv_sec) / 1000;
-	elapsedTime += (now.tv_usec - head->timeout.tv_usec) * 1000;
-	if (elapsedTime > CONNECTION_TIMEOUT) {// take element out of queue, return element
+	struct timeval elapsedTime;
+	// long int elapsedTime = (now.tv_sec - head->timeout.tv_sec) / 1000;
+	// elapsedTime += (now.tv_usec - head->timeout.tv_usec) * 1000;
+	int negative = timeval_subtract (&elapsedTime, &now, &(head->timeout));
+	if (negative){
+		printf("Shouldn't be\n");
+	}
+	int toTime = elapsedTime.tv_sec / 1000 + elapsedTime.tv_usec * 1000;
+	if (toTime > CONNECTION_TIMEOUT) {// take element out of queue, return element
 		*queue = head->next;
 		packet_t* packet = &(head -> packet);
 		return packet;
+	}else{
+		printf("elapsedTime: %d\n", toTime);
+		return NULL;
 	}
-	return NULL;
 }
 // Remove potentially resent packets that have already been acknowledged
-Node* remove_acknowledged_packet4(packet_t* acknowledged_packet, Node** queue){
+Node* remove_acknowledged_packet(packet_t* acknowledged_packet, Node** queue){
 	Node* head = *queue;
 	Node* prev = NULL;
 	Node* target = head;
 	while(target != NULL){
   		if(		target->packet.sequence_num + 
   				target->packet.data_payload_length
-  			< acknowledged_packet->acknowledgement_num){ //If the packet can be removed from linkedlist
+  			< acknowledged_packet->acknowledgement_num){ 
+  			//If the packet can be removed from linkedlist because it's too old
   			if (prev == NULL){
   				Node* freeNode = target;
   				target = target->next;
@@ -326,7 +358,8 @@ Node* remove_acknowledged_packet4(packet_t* acknowledged_packet, Node** queue){
   			logServer(4, 2, acknowledged_packet->acknowledgement_num, acknowledged_packet->data_payload_length);
   		}else if(	target->packet.sequence_num + 
   					target->packet.data_payload_length
-  				== acknowledged_packet->acknowledgement_num){ //If the packet can be removed from linkedlist
+  				== acknowledged_packet->acknowledgement_num){ 
+  				//If the packet is the one to be removed from linkedlist
   			if (prev == NULL){
   				Node* freeNode = target;
   				target = target->next;
@@ -343,11 +376,11 @@ Node* remove_acknowledged_packet4(packet_t* acknowledged_packet, Node** queue){
   			target = target->next;
   		}
   	}
-  	printf("Size of queue after acknowledged is %d\n", getSize(head) );
+  	// printf("Size of queue after acknowledged is %d\n", getSize(head) );
   	return head;
 }
 
-Node* remove_acknowledged_packet(packet_t* acknowledged_packet, Node** queue){
+Node* remove_acknowledged_packet4(packet_t* acknowledged_packet, Node** queue){
 	if (*queue == NULL){
 		return NULL;
 	}

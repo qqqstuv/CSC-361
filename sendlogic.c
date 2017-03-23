@@ -159,7 +159,7 @@ Node* send_full_queue(	int sock, struct sockaddr_in* sender_address,
 							FILE* file, int* sequence_number, 
 							Node* queue, 
 							enum connection_states* connection_state){
-	int num_of_sendable_packets = 10 - getSize(queue);
+	int num_of_sendable_packets = SENDER_WINDOW_SIZE - getSize(queue);
 	// printf("Sendable packet numbers: %d\n",  num_of_sendable_packets);
 	int packets_sent = 0;
 	while(packets_sent < num_of_sendable_packets){
@@ -227,7 +227,7 @@ void send_ACK_packet(int sock, struct sockaddr_in* receiver_address,
 	char* buffer = packet_to_buffer(&packet);
 	sendto(sock, buffer, MAX_PACKET_SIZE, 0, (struct sockaddr*) sender_address, sender_address_size);
 	free(buffer);
-	logServer(1,2, sequence_number, 0);
+	
 	statistics.ACK_RECEIVED++;
 	return;
 }
@@ -310,6 +310,20 @@ int timeval_subtract (struct timeval *result, struct timeval *x, struct timeval 
   /* Return 1 if result is negative. */
   return x->tv_sec < y->tv_sec;
 }
+
+// Find the specific packet that the ack needs and send it first
+// packet_t* find_specific_packet(Node* queue, int repeated_ack){
+// 	Node* head = queue;
+// 	int size = 0;
+// 	if (head == NULL){
+// 		return size;
+// 	}
+// 	while(head != NULL){
+// 		size++;
+// 		head = head -> next;
+// 	}
+// 	return size;	
+// }
 
 // Find expired packet (the first) then remove it and return the data
 // Make the queue points to the next element in the queue. Might be null.

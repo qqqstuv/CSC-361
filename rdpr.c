@@ -99,16 +99,19 @@ int main(int argc, char* agrv[]){
       case 1: // DAT
         statistics.total_data_bytes_sent += packet->data_payload_length;
         if(packet->sequence_num == acknowledged_up_to){ // Write to file
-          logServer(3, 1, packet->sequence_num, packet->data_payload_length);
+          logServer(3, 1, packet->sequence_num, packet->data_payload_length); // received
           write_packet_to_file(packet, file, &acknowledged_up_to);
           statistics.unique_data_bytes_sent += packet->data_payload_length;
           statistics.unique_data_packets_sent++;
+          logServer(1,2, acknowledged_up_to, 0);
         }else if(packet->sequence_num < acknowledged_up_to){ // send something in the past
           printf("Lower than expected. Drop packet with seq %d\n", packet->sequence_num);
-          logServer(4, 1, packet->sequence_num, packet->data_payload_length);
+          logServer(4, 1, packet->sequence_num, packet->data_payload_length); // receive log 
+          logServer(2,2, acknowledged_up_to, 0); // resend log
         } else {//seq greater than expected
           logServer(4, 1, packet->sequence_num, packet->data_payload_length);
-          printf("Higher than expected. Drop packet with seq %d\n",packet->sequence_num);
+          printf("Higher than expected. Drop packet with seq %d\n",packet->sequence_num);// receive log
+          logServer(2,2, acknowledged_up_to, 0); // resend log
         }
         send_ACK_packet(sock, &receiver_address,
                        &sender_address, sender_address_size, 

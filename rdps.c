@@ -150,10 +150,12 @@ int main(int argc, char *argv[]){
             // drop the packet from timers
             queue = remove_acknowledged_packet(packet, &queue);
             // send new packets to fill in window
-            queue = send_full_queue(sock, &sender_address,
+            if (getSize(queue) == 0){
+              queue = send_full_queue(sock, &sender_address,
                                 &receiver_address, 
                                 receiver_address_size,
                                 file, &system_seqnum, queue, &connection_state);
+            }
             break;
           case RESET:
             break;

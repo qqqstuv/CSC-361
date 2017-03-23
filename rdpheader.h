@@ -17,7 +17,8 @@
 #define MAGIC_SIZE 7
 #define TYPE_SIZE 3
 #define MAX_WINDOW_SIZE_UNIT 10
-#define CONNECTION_TIMEOUT 25	
+#define CONNECTION_TIMEOUT 30
+#define SENDER_WINDOW_SIZE 10	
 
 extern char* global_receiver_ip;
 extern int global_receiver_port;

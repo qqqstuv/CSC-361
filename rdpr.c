@@ -13,11 +13,11 @@
 
 // UDP Client
 
-char* global_receiver_ip;
-int global_receiver_port;
-
 char* global_sender_ip;
 int global_sender_port;
+
+char* global_receiver_ip;
+int global_receiver_port;
 
 statistics_t statistics;
 struct timeval duration;
@@ -28,16 +28,14 @@ int main(int argc, char* agrv[]){
     exit(-1);
   }
   char* receiver_ip = agrv[1];
-  global_receiver_ip = agrv[1];
+  global_sender_ip = agrv[1];
   int receiver_port = atoi(agrv[2]);
-  global_receiver_port = receiver_port;
+  global_sender_port = receiver_port;
   char* file_name = agrv[3];
   FILE* file = fopen(file_name, "w");
 
-  // Set up socket
+  // Set up socket stuff
   int sock = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
- 
-  /* create an Internet, datagram, socket using UDP */
 
   struct sockaddr_in receiver_address;
   receiver_address.sin_family       = AF_INET;
@@ -64,16 +62,16 @@ int main(int argc, char* agrv[]){
 
   char* buffer = calloc(MAX_PACKET_SIZE + 1, sizeof(char));
 
-  int acknowledged_up_to;
+  int acknowledged_up_to; // temp ack up to
 
   srand(time(NULL)); // set random timer for seq num later
-  gettimeofday(&duration, NULL);
+  
   for (;;) {
     memset(buffer, '\0', MAX_PACKET_SIZE); // reset memory of buffer
     packet_t* packet;
     int recsize = recvfrom(sock, buffer, MAX_PACKET_SIZE, 0, (struct sockaddr*) &sender_address, &sender_address_size); // This socket is blocking.
-    global_sender_ip = inet_ntoa(sender_address.sin_addr);
-    global_sender_port = (int) ntohs(sender_address.sin_port);
+    global_receiver_ip = inet_ntoa(sender_address.sin_addr);
+    global_receiver_port= (int) ntohs(sender_address.sin_port);
     if (recsize == - 1){
       printf("Receiving error\n");
     }
@@ -85,6 +83,7 @@ int main(int argc, char* agrv[]){
     statistics.total_data_packets_sent++;
     switch(packet->type){
       case 3: // SYN
+        gettimeofday(&duration, NULL); // Set the timer for the whole transaction
         acknowledged_up_to = packet->sequence_num;
         logServer(3, 3, acknowledged_up_to, 0); // receive SYN
         send_ACK_packet(sock, &receiver_address, 
@@ -93,7 +92,9 @@ int main(int argc, char* agrv[]){
         statistics.SYN_SENT++;
         break;
       case 2: //ACK
-        printf("This is impossible.\n");
+        send_RST_packet(sock, &receiver_address, 
+                      &sender_address, sender_address_size, 
+                      acknowledged_up_to, 0);
         exit_unsuccessful(1);
         break;
       case 1: // DAT
@@ -105,12 +106,12 @@ int main(int argc, char* agrv[]){
           statistics.unique_data_packets_sent++;
           logServer(1,2, acknowledged_up_to, 0);
         }else if(packet->sequence_num < acknowledged_up_to){ // send something in the past
-          printf("Lower than expected. Drop packet with seq %d\n", packet->sequence_num);
+          // printf("Lower than expected. Drop packet with seq %d\n", packet->sequence_num);
           logServer(4, 1, packet->sequence_num, packet->data_payload_length); // receive log 
           logServer(2,2, acknowledged_up_to, 0); // resend log
         } else {//seq greater than expected
           logServer(4, 1, packet->sequence_num, packet->data_payload_length);
-          printf("Higher than expected. Drop packet with seq %d\n",packet->sequence_num);// receive log
+          // printf("Higher than expected. Drop packet with seq %d\n",packet->sequence_num);// receive log
           logServer(2,2, acknowledged_up_to, 0); // resend log
         }
         send_ACK_packet(sock, &receiver_address,
@@ -119,7 +120,6 @@ int main(int argc, char* agrv[]){
         break;
       case 5: //RST
         statistics.RST_RECEIVED++;
-        printf("Got a reset\n");
         exit_unsuccessful(1);
         break;
       case 4: // FIN
@@ -131,17 +131,17 @@ int main(int argc, char* agrv[]){
           int firstFin = 0;
           statistics.FIN_SENT++;
           acknowledged_up_to += packet->data_payload_length;
-          for(;;){
+          for(;;){ // Enter infinite loop here. Stuff above doesnt matter anymore
             int recsize = recvfrom(sock, buffer, MAX_PACKET_SIZE, 0, (struct sockaddr*) &sender_address, &sender_address_size);
             if(recsize <= 0){ // Havent got anything
               gettimeofday(&now, NULL);
               struct timeval elapsedTime;
               int negative = timeval_subtract(&elapsedTime, &now, &timeout);
               if (negative){
-                printf("Shouldn't be\n");
+                // printf("Shouldn't be\n");
               }
               int toTime = elapsedTime.tv_sec * 1000 + elapsedTime.tv_usec / 1000;
-              if (toTime > CONNECTION_TIMEOUT) {//havent got anything, timed out
+              if (toTime > CONNECTION_TIMEOUT * 1.5) {//havent got anything, timed out
                 fclose(file);
                 close(sock);
                 free(packet);
@@ -157,7 +157,13 @@ int main(int argc, char* agrv[]){
               }else{
                 logServer(4, packet->type, packet->sequence_num, 0);
               }
-              statistics.FIN_SENT++;
+              statistics.total_data_packets_sent++;
+              if (packet->type == 4){
+                statistics.FIN_SENT++;
+              }else if(packet->type == 1){
+                statistics.total_data_bytes_sent += packet->data_payload_length;  
+              }
+              
               send_ACK_packet(sock, &receiver_address, &sender_address, 
                             sender_address_size, acknowledged_up_to, 0);
               if(packet->type == 4){
@@ -165,15 +171,12 @@ int main(int argc, char* agrv[]){
               }
             }
           }
-        }else{
-          printf("Got FIN but still need data %d  %d\n", packet->sequence_num, acknowledged_up_to );
-          statistics.FIN_SENT++;
+        }else{ // FIN is not the expected packet. Send back proper ACK
           send_ACK_packet(sock, &receiver_address,
                  &sender_address, sender_address_size, 
                  acknowledged_up_to, 0);
         }
         fflush(stdout);
-
         break;
     }
     free(packet);

@@ -87,6 +87,10 @@ int main(int argc, char *argv[]){
     Node* queue = NULL;
     gettimeofday(&duration, NULL);
 
+    // Set seed for random seq num
+   time_t t;
+   srand((unsigned) time(&t));
+
     while (connection_state == HANDSHAKE) {
       // Get something from the socket
       // printf("Waiting\n");
@@ -137,9 +141,14 @@ int main(int argc, char *argv[]){
           }
         }
       }
+      if (packet->type == 3){
+        send_FIN_packet(sock, &sender_address, &receiver_address, 
+                receiver_address_size, system_seqnum, 0); 
+        exit_unsuccessful(0);   
+      }
       if (packet->type == 2){ // ACK. should be from the receiver only 
         statistics.ACK_RECEIVED++;
-        if (acked_up_to < packet->acknowledgement_num){
+        if (acked_up_to <= packet->acknowledgement_num){
           acked_up_to = packet->acknowledgement_num;
           logServer(3, 2, packet->acknowledgement_num, packet->data_payload_length);
         }else{
@@ -158,12 +167,13 @@ int main(int argc, char *argv[]){
             }
             break;
           case RESET:
+            exit_unsuccessful(0);
             break;
           case EXIT: //Final state. Can only reach here if there is no data to send 
             queue = remove_acknowledged_packet(packet, &queue);
             if (getSize(queue) == 0){ // All data has been received
               fclose(file);
-              printf("EXIT HERE\n");
+              // printf("EXIT HERE\n");
               exit_successful(0);
             }
             break;
@@ -179,7 +189,7 @@ int main(int argc, char *argv[]){
       } else if (packet->type == 5){ // RST
         connection_state = RESET;
         fclose(file);
-        printf("Getting reset from sender\n");
+        // printf("Getting reset from sender\n");
         exit_unsuccessful(0);
       } else if (packet->type == 4){ // FIN Coming from timeout queue in EXIT STATE
         // if (getSize(queue) == 0){
@@ -190,9 +200,9 @@ int main(int argc, char *argv[]){
           //         receiver_address_size, system_seqnum, 0);
           queue = resend_packet(sock, &receiver_address, receiver_address_size, 
                 packet, queue);
+          statistics.FIN_SENT++;
         // }
-        // send_FIN_packet(sock, &sender_address, &receiver_address, 
-        //         receiver_address_size, system_seqnum, 0);
+
       } else { // Invalid packet type
       }
       packet = NULL; //reset packetset

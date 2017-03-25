@@ -44,9 +44,14 @@ void logServer(int event_type, int packet_type, int number, int length){
 	}
 	printf("%s ", event_type_char);
 	//Port and stuff
-	// printf("%s:%d ", global_sender_ip, global_sender_port );
-	// printf("%s:%d ", global_receiver_ip, global_receiver_port);
-
+	if (event_type == 1 || event_type == 2){
+		printf("%s:%d ", global_sender_ip, global_sender_port );
+		printf("%s:%d ", global_receiver_ip, global_receiver_port);
+	}else{
+		printf("%s:%d ", global_receiver_ip, global_receiver_port);
+		printf("%s:%d ", global_sender_ip, global_sender_port );
+	}
+	
 	char* packet_type_char = NULL;
 	switch(packet_type){
 		case 1:
@@ -178,7 +183,7 @@ Node* send_full_queue(	int sock, struct sockaddr_in* sender_address,
 			packet->window_size			= 0;
 			strcpy(packet->magic, "CSC361");
 			*connection_state = EXIT;
-			printf("CONNECTION STATE: EXIT\n");
+			// printf("CONNECTION STATE: EXIT\n");
 			char* buffer = packet_to_buffer(packet);
 			sendto(sock,buffer, MAX_PACKET_SIZE, 0, (struct sockaddr*) receiver_address, receiver_address_size);
 			free(buffer);
@@ -232,11 +237,31 @@ void send_ACK_packet(int sock, struct sockaddr_in* receiver_address,
 	return;
 }
 
+void send_RST_packet(int sock, struct sockaddr_in* receiver_address, 
+						struct sockaddr_in* sender_address, socklen_t sender_address_size, 
+						int sequence_number, int window_size){
+	packet_t packet;
+	strcpy(packet.magic, "CSC361");
+	packet.window_size			= 0;
+	packet.type 				= 5;
+	packet.acknowledgement_num 	= sequence_number;
+	packet.data_payload_length 	= 0; // how long the data is
+	packet.sequence_num 	 	= 0;	
+	char* buffer = packet_to_buffer(&packet);
+	sendto(sock, buffer, MAX_PACKET_SIZE, 0, (struct sockaddr*) sender_address, sender_address_size);
+	free(buffer);
+	statistics.RST_SENT++;
+	return;
+}
+
 //(sock, &receiver_address, receiver_address_size, &sender_address)
 // Send syn packet to receiver and return seq
 int send_SYN_packet(int socket, struct sockaddr_in* receiver_address, 
 	socklen_t receiver_address_size, struct sockaddr_in* sender_address){
-	int sequence_number = rand();
+	int sequence_number;
+	do { 
+		sequence_number = rand(); 
+	} while (sequence_number <= 14864366);
 	packet_t packet;
 	strcpy(packet.magic, "CSC361");
 	packet.type 					= 3;
@@ -310,20 +335,6 @@ int timeval_subtract (struct timeval *result, struct timeval *x, struct timeval 
   /* Return 1 if result is negative. */
   return x->tv_sec < y->tv_sec;
 }
-
-// Find the specific packet that the ack needs and send it first
-// packet_t* find_specific_packet(Node* queue, int repeated_ack){
-// 	Node* head = queue;
-// 	int size = 0;
-// 	if (head == NULL){
-// 		return size;
-// 	}
-// 	while(head != NULL){
-// 		size++;
-// 		head = head -> next;
-// 	}
-// 	return size;	
-// }
 
 // Find expired packet (the first) then remove it and return the data
 // Make the queue points to the next element in the queue. Might be null.

@@ -124,3 +124,9 @@ void exit_unsuccessful(int side);
 void exit_successful(int side);
 
 int timeval_subtract (struct timeval *result, struct timeval *x, struct timeval *y);
+
+
+
+void send_RST_packet(int sock, struct sockaddr_in* receiver_address, 
+						struct sockaddr_in* sender_address, socklen_t sender_address_size, 
+						int sequence_number, int window_size);
